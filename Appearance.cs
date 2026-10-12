@@ -26,30 +26,33 @@ namespace CloudMusicFloat {
    Color from=(Color)target.GetValue(property);target.SetValue(property,color);target.BeginAnimation(property,new ColorAnimation(from,color,TimeSpan.FromMilliseconds(280)){EasingFunction=new QuadraticEase{EasingMode=EasingMode.EaseInOut},FillBehavior=FillBehavior.Stop},HandoffBehavior.SnapshotAndReplace);
   }
  }
- // Apply the documented desktop Acrylic material to this application's own HWND.
- // Unsupported systems keep the normal WPF background; no system settings change.
+ // Clear blur on this application's own layered HWND. DWM Desktop Acrylic's
+ // built-in opaque tint cannot be faded independently of the foreground.
+ // Accent policy is a compatibility API: failure leaves ordinary transparency.
  public class GlassEffect {
   [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct VersionInfo{public int Size,Major,Minor,Build,Platform;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=128)]public string ServicePack;}
-  [StructLayout(LayoutKind.Sequential)]struct Margins{public int Left,Right,Top,Bottom;}
+  [StructLayout(LayoutKind.Sequential)]struct AccentPolicy{public int State,Flags,Color,Animation;}
+  [StructLayout(LayoutKind.Sequential)]struct CompositionData{public int Attribute;public IntPtr Data;public int Size;}
   [DllImport("ntdll.dll",CharSet=CharSet.Unicode)]static extern int RtlGetVersion(ref VersionInfo version);
-  [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr window,int attribute,ref int value,int size);
-  [DllImport("dwmapi.dll")]static extern int DwmGetWindowAttribute(IntPtr window,int attribute,out int value,int size);
-  [DllImport("dwmapi.dll")]static extern int DwmExtendFrameIntoClientArea(IntPtr window,ref Margins margins);
+  [DllImport("user32.dll")]static extern int SetWindowCompositionAttribute(IntPtr window,ref CompositionData data);
+  [DllImport("user32.dll")]static extern int SetWindowRgn(IntPtr window,IntPtr region,bool redraw);
+  [DllImport("gdi32.dll")]static extern IntPtr CreateRoundRectRgn(int left,int top,int right,int bottom,int ellipseWidth,int ellipseHeight);
+  [DllImport("gdi32.dll")]static extern bool DeleteObject(IntPtr value);
   public static readonly bool Supported=IsSupported();
   public bool Active{get;private set;}public int LastResult{get;private set;}
-  static bool IsSupported(){try{var info=new VersionInfo{Size=Marshal.SizeOf(typeof(VersionInfo))};return RtlGetVersion(ref info)==0&&info.Major>=10&&info.Build>=22621;}catch{return false;}}
+  static bool IsSupported(){try{var info=new VersionInfo{Size=Marshal.SizeOf(typeof(VersionInfo))};return RtlGetVersion(ref info)==0&&info.Major>=10&&info.Build>=17763;}catch{return false;}}
   public bool Apply(Window window,bool enabled,bool dark){
-   Active=false;if(!Supported||window.AllowsTransparency)return false;IntPtr handle=new WindowInteropHelper(window).Handle;if(handle==IntPtr.Zero)return false;
-   try{var source=HwndSource.FromHwnd(handle);if(source!=null)source.CompositionTarget.BackgroundColor=Colors.Transparent;
-    int mode=dark?1:0,corner=2,material=enabled?3:1;DwmSetWindowAttribute(handle,20,ref mode,4);DwmSetWindowAttribute(handle,33,ref corner,4);
-    var margins=new Margins{Left=enabled?-1:0,Right=enabled?-1:0,Top=enabled?-1:0,Bottom=enabled?-1:0};int frame=DwmExtendFrameIntoClientArea(handle,ref margins);LastResult=DwmSetWindowAttribute(handle,38,ref material,4);Active=enabled&&frame>=0&&LastResult>=0;
-   }catch{LastResult=-1;}return Active;
+   Active=false;if(!Supported)return false;IntPtr handle=new WindowInteropHelper(window).Handle;if(handle==IntPtr.Zero)return false;
+   IntPtr memory=IntPtr.Zero;try{var policy=new AccentPolicy{State=enabled?3:0};memory=Marshal.AllocHGlobal(Marshal.SizeOf(policy));Marshal.StructureToPtr(policy,memory,false);var data=new CompositionData{Attribute=19,Data=memory,Size=Marshal.SizeOf(policy)};LastResult=SetWindowCompositionAttribute(handle,ref data);Active=enabled&&LastResult!=0;}
+   catch{LastResult=0;}finally{if(memory!=IntPtr.Zero)Marshal.FreeHGlobal(memory);}return Active;
   }
-  public int ReadMaterial(Window window){try{int value;return DwmGetWindowAttribute(new WindowInteropHelper(window).Handle,38,out value,4)>=0?value:-1;}catch{return -1;}}
+  public void Resize(Window window,double radius){IntPtr handle=new WindowInteropHelper(window).Handle;if(handle==IntPtr.Zero)return;try{var source=PresentationSource.FromVisual(window);if(source==null||source.CompositionTarget==null)return;var dpi=source.CompositionTarget.TransformToDevice;int width=(int)Math.Ceiling(window.ActualWidth*dpi.M11),height=(int)Math.Ceiling(window.ActualHeight*dpi.M22),round=(int)Math.Round(radius*2*dpi.M11);IntPtr region=CreateRoundRectRgn(0,0,width+1,height+1,round,round);if(region!=IntPtr.Zero&&SetWindowRgn(handle,region,true)==0)DeleteObject(region);}catch{}}
  }
  public static class MenuAppearance {
   static Brush BoundBrush(Brush source){var mutable=source as SolidColorBrush;if(mutable==null)return source;var proxy=new SolidColorBrush();BindingOperations.SetBinding(proxy,SolidColorBrush.ColorProperty,new Binding("Color"){Source=mutable,Mode=BindingMode.OneWay});return proxy;}
+  public static void ConfigureTooltips(FrameworkElement target,SolidColorBrush surface,Brush text,Brush border){target.Resources["TooltipSurface"]=BoundBrush(surface);target.Resources["TooltipText"]=BoundBrush(text);target.Resources["TooltipEdge"]=BoundBrush(border);target.Resources[typeof(ToolTip)]=(Style)XamlReader.Parse(@"<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='ToolTip'><Setter Property='Background' Value='{DynamicResource TooltipSurface}'/><Setter Property='Foreground' Value='{DynamicResource TooltipText}'/><Setter Property='BorderBrush' Value='{DynamicResource TooltipEdge}'/><Setter Property='FontFamily' Value='Microsoft YaHei UI'/><Setter Property='FontSize' Value='11'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ToolTip'><Border CornerRadius='8' Padding='10,6' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1'><ContentPresenter/></Border></ControlTemplate></Setter.Value></Setter></Style>");}
   public static void Configure(ContextMenu menu,SolidColorBrush surface,SolidColorBrush hover,Brush text,Brush border){
+   ConfigureTooltips(menu,surface,text,border);
    // Resource lookup may freeze brushes. Bound proxies keep the animated palette mutable.
    menu.Resources["MenuSurface"]=BoundBrush(surface);menu.Resources["MenuHover"]=BoundBrush(hover);menu.Resources["MenuText"]=BoundBrush(text);menu.Resources["MenuEdge"]=BoundBrush(border);
    menu.Background=surface;menu.Foreground=text;menu.BorderBrush=border;menu.FontFamily=new FontFamily("Microsoft YaHei UI");menu.FontSize=12;menu.BorderThickness=new Thickness(1);menu.Padding=new Thickness(6);

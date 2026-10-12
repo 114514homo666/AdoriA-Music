@@ -1,20 +1,26 @@
 # AdoriA MUSIC
 
-支持网易云音乐与 QQ 音乐的 Windows 悬浮窗：封面、同步歌词、播放进度，以及白、蓝、灰、黑四种配色和毛玻璃效果。
+支持网易云音乐与 QQ 音乐的 Windows 悬浮窗：封面、同步歌词、播放进度、自由缩放、独立背景透明度，以及白、蓝、灰、黑四种配色和毛玻璃效果。
 
 ## 下载
 
-从 [最新版 Releases](https://github.com/114514homo666/AdoriA-Music/releases/latest) 下载 `AdoriA-Music-v1.3.0-win-x64.zip`，完整解压后运行 `AdoriA-Music.exe`。升级前请退出旧版。
+从 [最新版 Releases](https://github.com/114514homo666/AdoriA-Music/releases/latest) 下载 `AdoriA-Music-v1.4.0-win-x64.zip`，完整解压后运行 `AdoriA-Music.exe`。升级前请退出旧版。
 
 无需安装或管理员权限。支持 Windows 10/11 64 位，使用系统自带的 .NET Framework 4.x；QQ 系统媒体接口需要 Windows 10 1809 或更新版本。
 
 ## 外观
 
-顶部调色盘或右键“颜色与毛玻璃”可切换四种颜色，并打开或关闭毛玻璃。文字、进度、按钮、颜色菜单、播放器菜单、右键菜单及子菜单都随主题变化；配色切换带过渡动画，偏好会保存。
+顶部调色盘或右键“颜色与毛玻璃”可切换四种颜色、开关毛玻璃，调整大小与背景不透明度。文字、进度、按钮、菜单及提示都随主题变化；配色与大小切换带过渡动画，偏好会保存。
 
-![配套颜色菜单](preview-menu-blue.jpg)
+- 缩放范围 70%–180%：拖动右下角、按住 Ctrl 滚动滚轮，或使用“窗口缩放”滑条。文字、封面、歌词和控件一起按比例变化，完整与精简模式都适用。
+- 背景不透明度滑条为 0%–100%：0% 全透明，100% 实色，默认 35%。只改变背景，文字与图标保持清晰。
+- 毛玻璃实时模糊窗口后的内容，去掉旧版浓重底色；滑条可连续调整通透程度。调到 0% 时关闭模糊，完整透出背景。
 
-毛玻璃使用 Windows 11 22H2 及更新版本的桌面 Acrylic。较早系统使用普通背景；显示效果还受 Windows 透明效果设置、远程桌面和图形环境影响。软件不更改系统设置。
+![新版毛玻璃悬浮窗](preview-main-v140.jpg)
+
+![配套滑条菜单](preview-controls-v140.jpg)
+
+毛玻璃通过本窗口的 Windows 合成模糊兼容接口实现；本机 Windows 11 已实测。Windows 10 1809+ 会尝试启用，接口不支持时保留普通透明背景。系统版本和图形环境可能影响效果，软件不更改系统设置。
 
 ## 播放器与歌词
 
@@ -30,8 +36,8 @@
 
 在 Windows PowerShell 中运行 `./build.ps1`，会生成 `AdoriA-Music.exe`。不依赖 NuGet 或额外安装工具，使用 Windows 自带的 C# 编译器和 WPF。
 
-运行 `./verify.ps1` 执行歌词检查及屏幕外界面检查。验证记录见 [验证记录](验证记录.md)。本次发布包含自 v1.1.0 以来的 QQ 音乐支持和 v1.2.1 歌词兼容修复。
+运行 `./verify.ps1` 执行 30 项歌词检查与 51 项屏幕外界面检查。验证记录见 [验证记录](验证记录.md)。保留 QQ 音乐支持及歌词兼容修复。
 
 缓存及诊断位于 `%LOCALAPPDATA%\AdoriA-Music\`，窗口设置位于程序旁。软件不读取登录凭据、不注入代码、不修改播放器文件。
 
-参考：[Microsoft 桌面背景材料](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type)、[Microsoft WPF 玻璃区域](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/graphics-multimedia/extend-glass-frame-into-a-wpf-application)、[QQ 音乐公开接口研究](https://github.com/WXRIW/Lyricify-Lyrics-Helper/blob/master/Lyricify.Lyrics.Helper/Providers/Web/QQMusic/Api.cs)、[网易云本地播放数据研究](https://github.com/YUCLing/netease-watcher)。DeepSeek 参与动画、系统媒体适配及歌词复核，Codex 完成集成、配色与菜单、原生毛玻璃及验证。本项目与两个播放器厂商无关联。
+参考：[Microsoft 窗口合成接口](https://learn.microsoft.com/en-us/windows/win32/dwm/setwindowcompositionattribute)、[QQ 音乐公开接口研究](https://github.com/WXRIW/Lyricify-Lyrics-Helper/blob/master/Lyricify.Lyrics.Helper/Providers/Web/QQMusic/Api.cs)、[网易云本地播放数据研究](https://github.com/YUCLing/netease-watcher)。DeepSeek 参与动画、系统媒体适配、歌词复核及本版滑条控件制作；Codex 完成修订、集成、缩放与背景分层、毛玻璃和验证。本项目与两个播放器厂商无关联。

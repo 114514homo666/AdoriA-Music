@@ -22,8 +22,8 @@ using Microsoft.Win32;
 using System.Windows.Interop;
 using System.Windows.Shell;
 
-[assembly:System.Reflection.AssemblyVersion("1.3.0.0")]
-[assembly:System.Reflection.AssemblyFileVersion("1.3.0.0")]
+[assembly:System.Reflection.AssemblyVersion("1.4.0.0")]
+[assembly:System.Reflection.AssemblyFileVersion("1.4.0.0")]
 namespace CloudMusicFloat {
  public class Song {
   public string Id="", Title="", Artist="", Album="", Cover="", Source="NetEase"; public double Duration; public byte[] CoverBytes;
@@ -120,8 +120,8 @@ namespace CloudMusicFloat {
    return lines;
   }
  }
- public class Settings {public double Left=Double.NaN,Top=Double.NaN,Opacity=.96,Offset=0;public bool Compact=false,Topmost=true,Glass=true;public string Player="NetEase",Theme="Black";}
- public class Overlay : Window {
+ public class Settings {public double Left=Double.NaN,Top=Double.NaN,Opacity=.96,BackgroundOpacity=.35,Offset=0,Scale=1;public bool Compact=false,Topmost=true,Glass=true;public string Player="NetEase",Theme="Black";}
+ public partial class Overlay : Window {
   readonly string root=AppDomain.CurrentDomain.BaseDirectory;string dataRoot,dbPath,currentId="";Song song;Settings settings;
   PlaybackReader reader=new PlaybackReader();List<LyricLine> lyrics=new List<LyricLine>();
   SystemMediaReader mediaReader=new SystemMediaReader();MediaSnapshot mediaSnapshot;DateTime mediaReadAt;int sourceRevision;bool controlling;
@@ -155,20 +155,21 @@ namespace CloudMusicFloat {
   }
   public Overlay(bool verification=false,string selectedPlayer=null) {
    lyricService=new LyricService(assets);
-   isVerification=verification;Title="AdoriA MUSIC · 悬浮窗"; Width=440;Height=356;WindowStyle=WindowStyle.None;ResizeMode=ResizeMode.NoResize;AllowsTransparency=!GlassEffect.Supported;Background=Brushes.Transparent;ShowInTaskbar=true;
-   if(GlassEffect.Supported)WindowChrome.SetWindowChrome(this,new WindowChrome{CaptionHeight=0,ResizeBorderThickness=new Thickness(0),GlassFrameThickness=new Thickness(-1),UseAeroCaptionButtons=false});
+   isVerification=verification;Title="AdoriA MUSIC · 悬浮窗"; Width=440;Height=356;WindowStyle=WindowStyle.None;ResizeMode=ResizeMode.NoResize;AllowsTransparency=true;Background=Brushes.Transparent;ShowInTaskbar=true;
    bool hadSettings=File.Exists(Path.Combine(root,"settings.json"));try{settings=new JavaScriptSerializer().Deserialize<Settings>(File.ReadAllText(Path.Combine(root,"settings.json")));}catch{settings=new Settings();}if(settings==null)settings=new Settings();
    if(settings.Player!="QQMusic")settings.Player="NetEase";if(!hadSettings&&Process.GetProcessesByName("QQMusic").Length>0&&Process.GetProcessesByName("cloudmusic").Length==0)settings.Player="QQMusic";
    if(selectedPlayer=="QQMusic"||selectedPlayer=="NetEase")settings.Player=selectedPlayer;
-   settings.Theme=Palette.Get(settings.Theme).Key;settings.Opacity=Math.Max(.45,Math.Min(1,settings.Opacity));Opacity=1;Topmost=settings.Topmost;
+   settings.Theme=Palette.Get(settings.Theme).Key;settings.BackgroundOpacity=FiniteClamp(settings.BackgroundOpacity,0,1,.35);settings.Scale=FiniteClamp(settings.Scale,.7,1.8,1);Opacity=1;Topmost=settings.Topmost;
    var area=SystemParameters.WorkArea;Left=Double.IsNaN(settings.Left)?area.Right-Width-28:Math.Max(area.Left,Math.Min(area.Right-Width,settings.Left));Top=Double.IsNaN(settings.Top)?area.Top+90:Math.Max(area.Top,Math.Min(area.Bottom-Height,settings.Top));
-   if(isVerification){settings.Compact=false;settings.Topmost=false;settings.Player="NetEase";ShowActivated=false;ShowInTaskbar=false;Left=Top=-10000;}Build();ApplyTheme(false);ApplyCompact(false);if(!isVerification)FindData();
+   if(isVerification){settings.Compact=false;settings.Scale=1;settings.Topmost=false;settings.Player="NetEase";ShowActivated=false;ShowInTaskbar=false;Left=Top=-10000;}Build();ApplyTheme(false);ApplyCompact(false);SetScale(settings.Scale,false);if(!isVerification)FindData();
    SourceInitialized+=(s,e)=>{ApplyTheme(false);var source=(HwndSource)PresentationSource.FromVisual(this);if(source!=null)source.AddHook((IntPtr hwnd,int message,IntPtr w,IntPtr l,ref bool handled)=>{if(message==0x031e||message==0x0320)Dispatcher.BeginInvoke(new Action(()=>ApplyTheme(false)));return IntPtr.Zero;});};
-   MouseLeftButtonDown+=(s,e)=>{if(e.ButtonState==MouseButtonState.Pressed){try{DragMove();}catch{}}};
+   MouseLeftButtonDown+=(s,e)=>{if(e.ButtonState==MouseButtonState.Pressed&&!IsInteractive(e.OriginalSource as DependencyObject)){try{DragMove();Save();}catch{}}};
+   PreviewMouseWheel+=(s,e)=>{if((Keyboard.Modifiers&ModifierKeys.Control)!=0){SetScale(settings.Scale+(e.Delta>0?.05:-.05),true);ScheduleSave();e.Handled=true;}};
+   SizeChanged+=(s,e)=>{glass.Resize(this,18*settings.Scale);};
    Closing+=(s,e)=>{CancelLyrics();if(!closingAnimated&&!isVerification){e.Cancel=true;closingAnimated=true;sourceRevision++;clock.Stop();Motion.Fade(card,0,150);var scale=(ScaleTransform)card.RenderTransform;Motion.To(scale,ScaleTransform.ScaleXProperty,.97,150);Motion.To(scale,ScaleTransform.ScaleYProperty,.97,150);Later(170,()=>Close());return;}Save();reader.Dispose();Task.Run(()=>mediaReader.Dispose());};
-   KeyDown+=(s,e)=>{if(e.Key==Key.Escape)Close();};
+   KeyDown+=(s,e)=>{if(e.Key!=Key.Escape)return;bool menuOpen=false;foreach(var menu in new[]{appearanceMenu,sourceMenu,ContextMenu})if(menu!=null&&menu.IsOpen){menu.IsOpen=false;menuOpen=true;}e.Handled=true;if(!menuOpen)Close();};
    clock=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(250)};clock.Tick+=Tick;if(!isVerification)clock.Start();
-   Loaded+=async(s,e)=>{card.Opacity=0;var scale=(ScaleTransform)card.RenderTransform;scale.ScaleX=scale.ScaleY=.97;Motion.Fade(card,settings.Opacity,230);Motion.To(scale,ScaleTransform.ScaleXProperty,1,230);Motion.To(scale,ScaleTransform.ScaleYProperty,1,230);if(!isVerification)await RefreshSong();};
+   Loaded+=async(s,e)=>{card.Opacity=0;var scale=(ScaleTransform)card.RenderTransform;scale.ScaleX=scale.ScaleY=.97;Motion.Fade(card,1,230);Motion.To(scale,ScaleTransform.ScaleXProperty,1,230);Motion.To(scale,ScaleTransform.ScaleYProperty,1,230);glass.Resize(this,18*settings.Scale);if(!isVerification)await RefreshSong();};
   }
   TextBlock Text(string value,double size,Brush color){return new TextBlock{Text=value,FontSize=size,Foreground=color,FontFamily=new FontFamily("Microsoft YaHei UI"),TextTrimming=TextTrimming.CharacterEllipsis};}
   void Later(int ms,Action action){var timer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(ms)};timer.Tick+=(s,e)=>{timer.Stop();action();};timer.Start();}
@@ -185,9 +186,10 @@ namespace CloudMusicFloat {
   }
   void Build() {
    surfaceTop.Offset=0;surfaceBottom.Offset=1;var surface=new LinearGradientBrush{StartPoint=new Point(0,0),EndPoint=new Point(.35,1)};surface.GradientStops.Add(surfaceTop);surface.GradientStops.Add(surfaceBottom);
-   var outer=new Border{Margin=new Thickness(GlassEffect.Supported?0:8),CornerRadius=new CornerRadius(GlassEffect.Supported?8:22),BorderThickness=new Thickness(1),BorderBrush=edge,Background=surface,Padding=GlassEffect.Supported?new Thickness(30,24,30,26):new Thickness(22,16,22,18),RenderTransform=new ScaleTransform(1,1),RenderTransformOrigin=new Point(.5,.5)};card=outer;
-   outer.Effect=new System.Windows.Media.Effects.DropShadowEffect{BlurRadius=16,ShadowDepth=3,Opacity=.35,Color=Colors.Black};Content=outer;
-   var layout=new Grid();outer.Child=layout;layout.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});layout.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});layout.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
+   var outer=new Border{Width=440,Height=356,CornerRadius=new CornerRadius(18),Background=Brushes.Transparent,RenderTransform=new ScaleTransform(1,1),RenderTransformOrigin=new Point(.5,.5)};card=outer;
+   Content=new Viewbox{Stretch=Stretch.Fill,Child=outer};var layers=new Grid();outer.Child=layers;
+   backgroundLayer=new Border{CornerRadius=new CornerRadius(18),BorderThickness=new Thickness(1),BorderBrush=edge,Background=surface,Opacity=settings.BackgroundOpacity,IsHitTestVisible=false};layers.Children.Add(backgroundLayer);
+   var layout=new Grid{Margin=new Thickness(30,24,30,26)};layers.Children.Add(layout);layout.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});layout.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});layout.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
    var top=new DockPanel{LastChildFill=true,Margin=new Thickness(0,0,0,15)};Grid.SetRow(top,0);layout.Children.Add(top);
    var controls=new StackPanel{Orientation=Orientation.Horizontal};DockPanel.SetDock(controls,Dock.Right);top.Children.Add(controls);
    sourceMenu=new ContextMenu();netEaseItem=new MenuItem{Header="网易云音乐",IsCheckable=true};qqItem=new MenuItem{Header="QQ 音乐",IsCheckable=true};netEaseItem.Click+=(s,e)=>SwitchPlayer("NetEase");qqItem.Click+=(s,e)=>SwitchPlayer("QQMusic");sourceMenu.Items.Add(netEaseItem);sourceMenu.Items.Add(qqItem);sourceMenu.Opened+=(s,e)=>{netEaseItem.IsChecked=settings.Player=="NetEase";qqItem.IsChecked=settings.Player=="QQMusic";};
@@ -213,24 +215,24 @@ namespace CloudMusicFloat {
    var menu=new ContextMenu();
    AddMenu(menu,"使用网易云音乐",()=>SwitchPlayer("NetEase"));AddMenu(menu,"使用 QQ 音乐",()=>SwitchPlayer("QQMusic"));menu.Items.Add(new Separator());
    var appearanceItem=new MenuItem{Header="颜色与毛玻璃"};PopulateAppearanceMenu(appearanceItem.Items);menu.Items.Add(appearanceItem);menu.Items.Add(new Separator());
-   AddMenu(menu,"透明度 100%",()=>SetOpacity(1));AddMenu(menu,"透明度 85%",()=>SetOpacity(.85));AddMenu(menu,"透明度 65%",()=>SetOpacity(.65));menu.Items.Add(new Separator());
    AddMenu(menu,"歌词提前 0.5 秒",()=>{settings.Offset+=.5;lyricIndex=-999;Save();});AddMenu(menu,"歌词延后 0.5 秒",()=>{settings.Offset-=.5;lyricIndex=-999;Save();});AddMenu(menu,"重置歌词偏移",()=>{settings.Offset=0;lyricIndex=-999;Save();});
-   AddMenu(menu,"重新获取歌词",()=>{if(song!=null)LoadCurrentLyrics(song,sourceRevision,true);});AddMenu(menu,"复制歌词诊断信息",()=>{try{Clipboard.SetText("AdoriA MUSIC v1.3.0\n"+(song==null?PlayerName:song.Source+" · "+song.Title+" / "+song.Artist)+"\n"+lyricState+"\n"+lyricDetails);}catch{}});
+   AddMenu(menu,"重新获取歌词",()=>{if(song!=null)LoadCurrentLyrics(song,sourceRevision,true);});AddMenu(menu,"复制歌词诊断信息",()=>{try{Clipboard.SetText("AdoriA MUSIC v1.4.0\n"+(song==null?PlayerName:song.Source+" · "+song.Title+" / "+song.Artist)+"\n"+lyricState+"\n"+lyricDetails);}catch{}});
    AddMenu(menu,"导入当前歌曲的 LRC 歌词…",ImportLrc);AddMenu(menu,"重新连接",()=>SwitchPlayer(settings.Player,true));menu.Items.Add(new Separator());AddMenu(menu,"退出",()=>Close());ContextMenu=menu;
    foreach(var popup in new[]{sourceMenu,appearanceMenu,menu})MenuAppearance.Configure(popup,menuSurface,menuHover,white,edge);
-   ToolTip="按住空白处拖动 · 右键打开设置 · Esc 退出";
+   MenuAppearance.ConfigureTooltips(this,menuSurface,white,edge);
+   AddResizeGrip(layers);ToolTip="按住空白处拖动 · 右下角或 Ctrl+滚轮缩放 · 右键打开设置 · Esc 退出";
   }
   void AddMenu(ContextMenu m,string label,Action action){var item=new MenuItem{Header=label};item.Click+=(s,e)=>action();m.Items.Add(item);}
-  void SetOpacity(double x){Motion.Fade(card,x,240);settings.Opacity=x;Save();}
+  void SetOpacity(double x){settings.BackgroundOpacity=FiniteClamp(x,0,1,.35);Motion.Fade(backgroundLayer,settings.BackgroundOpacity,100);ApplyGlassAndTint(true);SyncAppearanceSliders();ScheduleSave();}
   void PopulateAppearanceMenu(ItemCollection items){foreach(var palette in Palette.All){var chosen=palette;var item=new MenuItem{Header=chosen.Name,Tag=chosen.Key,IsCheckable=true};item.Click+=(s,e)=>{settings.Theme=chosen.Key;ApplyTheme(true);Save();};items.Add(item);}
-   items.Add(new Separator());var glassItem=new MenuItem{Header="毛玻璃效果",Tag="Glass",IsCheckable=true};glassItem.Click+=(s,e)=>{settings.Glass=!settings.Glass;ApplyTheme(true);Save();};items.Add(glassItem);
+   items.Add(new Separator());var glassItem=new MenuItem{Header="毛玻璃效果",Tag="Glass",IsCheckable=true};glassItem.Click+=(s,e)=>{settings.Glass=!settings.Glass;ApplyTheme(true);Save();};items.Add(glassItem);AddAppearanceSliders(items);
   }
-  void UpdateAppearanceChecks(ItemCollection items){foreach(var item in items){var entry=item as MenuItem;if(entry==null)continue;string tag=entry.Tag as string;if(tag=="Glass"){entry.IsChecked=settings.Glass;entry.ToolTip=GlassEffect.Supported?"模糊窗口背后的内容":"此系统使用普通背景，原生毛玻璃需要 Windows 11 22H2 或更新版本";}else if(tag!=null)entry.IsChecked=tag==settings.Theme;else if(entry.HasItems)UpdateAppearanceChecks(entry.Items);}}
-  void ApplyTheme(bool animated){var palette=Palette.Get(settings.Theme);bool active=glass.Apply(this,settings.Glass,palette.Dark);byte alpha=active?(byte)154:(byte)255;
-   var top=palette.Top;top.A=alpha;var bottom=palette.Bottom;bottom.A=active?(byte)180:(byte)255;Palette.To(surfaceTop,top,animated);Palette.To(surfaceBottom,bottom,animated);Palette.To((SolidColorBrush)white,palette.Text,animated);Palette.To((SolidColorBrush)muted,palette.Muted,animated);Palette.To((SolidColorBrush)accent,palette.Accent,animated);Palette.To(edge,palette.Border,animated);Palette.To(trackBrush,palette.Track,animated);Palette.To(artworkBrush,palette.Artwork,animated);
+  void UpdateAppearanceChecks(ItemCollection items){foreach(var item in items){var entry=item as MenuItem;if(entry==null)continue;string tag=entry.Tag as string;if(tag=="Glass"){entry.IsChecked=settings.Glass;entry.ToolTip=glass.Active?"实时模糊窗口后的内容，背景浓度可单独调整":"毛玻璃不可用或背景为 0% 时，使用普通透明背景";}else if(tag!=null)entry.IsChecked=tag==settings.Theme;else if(entry.HasItems)UpdateAppearanceChecks(entry.Items);}}
+  void ApplyTheme(bool animated){var palette=Palette.Get(settings.Theme);ApplyGlassAndTint(animated);
+   Palette.To((SolidColorBrush)white,palette.Text,animated);Palette.To((SolidColorBrush)muted,palette.Muted,animated);Palette.To((SolidColorBrush)accent,palette.Accent,animated);Palette.To(edge,palette.Border,animated);Palette.To(trackBrush,palette.Track,animated);Palette.To(artworkBrush,palette.Artwork,animated);
    if(pinIcon!=null)Palette.To((SolidColorBrush)pinIcon.Stroke,Topmost?palette.Accent:palette.Muted,animated);
    Palette.To(menuSurface,palette.Top,animated);var hover=palette.Accent;hover.A=36;Palette.To(menuHover,hover,animated);
-   Background=GlassEffect.Supported&&!active?new SolidColorBrush(palette.Bottom):Brushes.Transparent;
+   Background=Brushes.Transparent;ApplyTextContrast(palette);SyncAppearanceSliders();
    if(appearanceMenu!=null)UpdateAppearanceChecks(appearanceMenu.Items);if(ContextMenu!=null)UpdateAppearanceChecks(ContextMenu.Items);
   }
   string PlayerName {get{return settings.Player=="QQMusic"?"QQ 音乐":"网易云音乐";}}
@@ -242,8 +244,8 @@ namespace CloudMusicFloat {
   }
   void ApplyCompact(bool animated=false){
    int revision=++modeRevision;bool compact=settings.Compact;if(animated)Motion.Text(compactLabel,compact?"+":"−");else compactLabel.Text=compact?"+":"−";
-   if(!animated){Height=compact?214:356;lyricsViewport.Visibility=compact?Visibility.Collapsed:Visibility.Visible;lyricsPanel.Opacity=compact?0:1;compactLyricSlot.Visibility=compact?Visibility.Visible:Visibility.Hidden;compactLyricSlot.Opacity=compact?1:0;return;}
-   Motion.To(this,Window.HeightProperty,compact?214:356,300);
+   double modeHeight=compact?214:356;if(!animated){Height=modeHeight*settings.Scale;card.Height=modeHeight;lyricsViewport.Visibility=compact?Visibility.Collapsed:Visibility.Visible;lyricsPanel.Opacity=compact?0:1;compactLyricSlot.Visibility=compact?Visibility.Visible:Visibility.Hidden;compactLyricSlot.Opacity=compact?1:0;return;}
+   Motion.To(this,Window.HeightProperty,modeHeight*settings.Scale,300);Motion.To(card,FrameworkElement.HeightProperty,modeHeight,300);if(!isVerification)Later(310,ClampToWorkArea);
    if(compact){Motion.Fade(lyricsPanel,0,120);Motion.To(lyricShift,TranslateTransform.YProperty,-6,150);compactLyricSlot.Visibility=Visibility.Visible;Motion.Fade(compactLyricSlot,1,240);Later(310,()=>{if(revision==modeRevision&&settings.Compact)lyricsViewport.Visibility=Visibility.Collapsed;});}
    else{lyricsViewport.Visibility=Visibility.Visible;Motion.To(lyricShift,TranslateTransform.YProperty,0,280);Motion.Fade(lyricsPanel,1,280);Motion.Fade(compactLyricSlot,0,140);Later(160,()=>{if(revision==modeRevision&&!settings.Compact)compactLyricSlot.Visibility=Visibility.Hidden;});}
   }
@@ -335,7 +337,7 @@ namespace CloudMusicFloat {
   void Log(string text){assets.Log(text);}
   void Snapshot(string file){UpdateLayout();var bitmap=new RenderTargetBitmap((int)ActualWidth,(int)ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(this);var enc=new PngBitmapEncoder();enc.Frames.Add(BitmapFrame.Create(bitmap));using(var f=File.Create(file))enc.Save(f);}
   async Task SettleUi(Func<bool> ready){for(int i=0;i<80&&!ready();i++)await Task.Delay(25);}
-  public void AppearanceDemo(){Title="AdoriA MUSIC · 外观预览";ToolTip=null;settings.Theme="Blue";settings.Glass=true;settings.Opacity=1;ApplyTheme(false);Motion.Text(artist,"AdoriA MUSIC");Motion.Text(title,"让音乐拥有自己的颜色");SetLyricTexts("白 · 蓝 · 灰 · 黑","喜欢的配色，陪伴每一首歌","点击调色盘切换颜色与毛玻璃","");time.Text="01:28 / 04:08";Motion.Text(status,"");SetProgress(.355);SetPlayback(false);
+  public void AppearanceDemo(){Title="AdoriA MUSIC · 外观预览";ToolTip=null;settings.Theme="Blue";settings.Glass=true;settings.BackgroundOpacity=.35;Motion.Fade(backgroundLayer,.35,0);ApplyTheme(false);Motion.Text(artist,"AdoriA MUSIC");Motion.Text(title,"让音乐，随心缩放");SetLyricTexts("拖动右下角 · Ctrl+滚轮","透明的是背景，清晰的是歌词","点击调色盘，调整大小与透明度","");time.Text="01:28 / 04:08";Motion.Text(status,"");SetProgress(.355);SetPlayback(false);
    var group=new DrawingGroup();group.Children.Add(new GeometryDrawing(new LinearGradientBrush(Color.FromRgb(119,168,249),Color.FromRgb(65,88,175),45),null,new RectangleGeometry(new Rect(0,0,72,72),14,14)));group.Children.Add(new GeometryDrawing(Brushes.White,null,Geometry.Parse("M33,17 L52,13 L52,44 C52,52 39,55 39,48 C39,43 45,41 48,42 L48,22 L33,26 L33,48 C33,56 20,59 20,52 C20,47 26,45 29,46 L29,21 Z")));cover.Source=new DrawingImage(group);}
   public async Task VerifyUi(){
    string dir=Path.Combine(root,"ui-verification");Directory.CreateDirectory(dir);var checks=new Dictionary<string,object>();
@@ -361,11 +363,11 @@ namespace CloudMusicFloat {
     settings.Glass=false;settings.Theme="Black";ApplyTheme(false);var starting=((SolidColorBrush)white).Color;settings.Theme="White";ApplyTheme(true);await Task.Delay(90);checks["themeHasIntermediateColor"]=((SolidColorBrush)white).Color!=starting&&((SolidColorBrush)white).Color!=Palette.Get("White").Text;await Task.Delay(300);
     foreach(var palette in Palette.All){settings.Theme=palette.Key;ApplyTheme(true);await SettleUi(()=>((SolidColorBrush)white).Color==palette.Text&&((SolidColorBrush)accent).Color==palette.Accent&&surfaceTop.Color==palette.Top);checks["theme"+palette.Key]=((SolidColorBrush)white).Color==palette.Text&&((SolidColorBrush)accent).Color==palette.Accent&&surfaceTop.Color==palette.Top;Snapshot(Path.Combine(dir,"theme-"+palette.Key+".png"));}
     settings.Theme="White";ApplyTheme(true);await Task.Delay(35);settings.Theme="Blue";ApplyTheme(true);await Task.Delay(35);settings.Theme="Black";ApplyTheme(true);await Task.Delay(340);checks["rapidThemeSwitchKeepsLatest"]=((SolidColorBrush)white).Color==Palette.Get("Black").Text&&settings.Theme=="Black";
-    checks["glassDisabledIsSolid"]=!glass.Active&&surfaceTop.Color.A==255&&(!GlassEffect.Supported||glass.ReadMaterial(this)==1);settings.Glass=true;ApplyTheme(false);checks["glassNativeOrSafeFallback"]=GlassEffect.Supported?glass.Active&&glass.ReadMaterial(this)==3:!glass.Active&&surfaceTop.Color.A==255;
+    checks["glassDisabledIsSolid"]=!glass.Active&&surfaceTop.Color.A==255;settings.Glass=true;settings.BackgroundOpacity=.35;ApplyTheme(false);checks["glassNativeOrSafeFallback"]=glass.Active?glass.LastResult!=0&&surfaceTop.Color.A==255:surfaceTop.Color.A==255;
     var restored=new JavaScriptSerializer().Deserialize<Settings>(Json.Write(settings));checks["appearanceSettingsRoundTrip"]=restored.Theme=="Black"&&restored.Glass;var legacy=new JavaScriptSerializer().Deserialize<Settings>("{\"Player\":\"QQMusic\"}");checks["oldSettingsHaveAppearanceDefaults"]=legacy.Theme=="Black"&&legacy.Glass&&legacy.Player=="QQMusic";
     int popupIndex=0;foreach(var popup in new[]{sourceMenu,appearanceMenu,ContextMenu}){popup.PlacementTarget=this;popup.IsOpen=true;popup.UpdateLayout();await Task.Delay(100);checks["customMenuOpens"+(++popupIndex)]=popup.IsOpen&&popup.Template!=null&&popup.Items.OfType<MenuItem>().All(item=>item.Template!=null);if(popup==ContextMenu){var nested=popup.Items.OfType<MenuItem>().First(item=>item.HasItems);nested.IsSubmenuOpen=true;await Task.Delay(100);checks["customSubmenuOpens"]=nested.IsSubmenuOpen;nested.IsSubmenuOpen=false;}popup.IsOpen=false;}
     settings.Theme="White";ApplyTheme(false);appearanceMenu.IsOpen=true;appearanceMenu.UpdateLayout();await Task.Delay(100);checks["menuFollowsTheme"]=((SolidColorBrush)appearanceMenu.Background).Color==Palette.Get("White").Top&&((SolidColorBrush)appearanceMenu.Foreground).Color==Palette.Get("White").Text;appearanceMenu.IsOpen=false;settings.Theme="Black";ApplyTheme(false);
-    Snapshot(Path.Combine(dir,"final.png"));checks["passed"]=checks.Values.All(v=>v is bool&&(bool)v);
+    await VerifyAppearance(checks,dir);Snapshot(Path.Combine(dir,"final.png"));checks["passed"]=checks.Values.All(v=>v is bool&&(bool)v);
    }catch(Exception ex){checks["error"]=ex.ToString();checks["passed"]=false;}
    File.WriteAllText(Path.Combine(dir,"result.json"),Json.Write(checks),Encoding.UTF8);Close();
   }
@@ -373,11 +375,14 @@ namespace CloudMusicFloat {
  }
  static class Program {
   [STAThread]static void Main(string[] args){ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
-   if(args.Contains("--appearance-demo")){var demoApp=new Application();demoApp.DispatcherUnhandledException+=(s,e)=>{File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"preview-error.txt"),e.Exception.ToString());e.Handled=true;demoApp.Shutdown(1);};var demo=new Overlay(true);demo.Left=SystemParameters.WorkArea.Left+100;demo.Top=SystemParameters.WorkArea.Top+100;demo.ShowInTaskbar=true;demo.Loaded+=(s,e)=>demo.AppearanceDemo();demoApp.Run(demo);return;}
+   if(args.Contains("--appearance-demo")||args.Contains("--appearance-lab")){RunAppearanceDemo(args.Contains("--appearance-lab"));return;}
    if(args.Contains("--probe-media")){ProbeMedia();return;}
    if(args.Contains("--verify-live-control")){VerifyMediaControl(args.Contains("NetEase")?"cloudmusic":"QQMusic");return;}
    if(args.Contains("--verify-ui")){var testApp=new Application();var testWindow=new Overlay(true);testWindow.Loaded+=async(s,e)=>await testWindow.VerifyUi();testApp.Run(testWindow);return;}
    if(args.Contains("--probe")){Probe();return;}bool created;using(var mutex=new Mutex(true,"Local\\CloudMusicFloat_2026",out created)){if(!created)return;var app=new Application();var window=new Overlay(false,args.Contains("QQMusic")?"QQMusic":args.Contains("NetEase")?"NetEase":null);if(args.Contains("--background-capture")){window.SilentRun=true;window.Topmost=false;window.ShowActivated=false;window.ShowInTaskbar=false;window.Left=window.Top=-10000;window.Loaded+=async(s,e)=>{await window.Capture(args.Contains("NetEase")?"网易云模式预览.png":"QQ音乐模式预览.png");window.Close();};}else if(args.Contains("--capture"))window.Loaded+=async(s,e)=>await window.Capture();app.Run(window);}
+  }
+  static void RunAppearanceDemo(bool lab){var demoApp=new Application();demoApp.DispatcherUnhandledException+=(s,e)=>{File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"preview-error.txt"),e.Exception.ToString());e.Handled=true;demoApp.Shutdown(1);};var area=SystemParameters.WorkArea;var demo=new Overlay(true);demo.Left=area.Left+130;demo.Top=area.Top+130;demo.ShowInTaskbar=true;demo.ShowActivated=true;demo.Loaded+=(s,e)=>demo.AppearanceDemo();if(!lab){demoApp.Run(demo);return;}
+   var host=new Window{Title="AdoriA MUSIC · 玻璃效果验证背景",Width=1000,Height=720,Left=area.Left+60,Top=area.Top+60,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,Background=Brushes.White};var canvas=new Canvas();var colors=new[]{Color.FromRgb(235,150,95),Color.FromRgb(64,136,189),Color.FromRgb(107,176,151),Color.FromRgb(185,143,192)};for(int y=0;y<3;y++)for(int x=0;x<4;x++){var cell=new Border{Width=250,Height=240,Background=new SolidColorBrush(colors[(x+y)%4])};Canvas.SetLeft(cell,x*250);Canvas.SetTop(cell,y*240);canvas.Children.Add(cell);}host.Content=canvas;host.Loaded+=(s,e)=>{demo.Owner=host;demo.Show();demo.Activate();};demo.Closed+=(s,e)=>host.Close();demoApp.Run(host);
   }
   static void ProbeMedia(){var results=new Dictionary<string,object>();using(var r=new SystemMediaReader())try{
    var snapshot=r.Read("QQMusic");results["error"]=r.Error;results["snapshot"]=snapshot;if(snapshot!=null&&snapshot.Cover!=null){File.WriteAllBytes(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"qq-cover-probe.jpg"),snapshot.Cover);snapshot.Cover=null;}
