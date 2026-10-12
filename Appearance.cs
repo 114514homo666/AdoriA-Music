@@ -26,27 +26,45 @@ namespace CloudMusicFloat {
    Color from=(Color)target.GetValue(property);target.SetValue(property,color);target.BeginAnimation(property,new ColorAnimation(from,color,TimeSpan.FromMilliseconds(280)){EasingFunction=new QuadraticEase{EasingMode=EasingMode.EaseInOut},FillBehavior=FillBehavior.Stop},HandoffBehavior.SnapshotAndReplace);
   }
  }
- // Clear blur on this application's own layered HWND. DWM Desktop Acrylic's
- // built-in opaque tint cannot be faded independently of the foreground.
- // Accent policy is a compatibility API: failure leaves ordinary transparency.
- public class GlassEffect {
+ // A non-layered, non-interactive companion surface lets the compositor round
+ // the blur itself. The foreground remains independently transparent in WPF.
+ // Windows without system corner support fall back to ordinary transparency.
+ public class GlassEffect : IDisposable {
   [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct VersionInfo{public int Size,Major,Minor,Build,Platform;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=128)]public string ServicePack;}
   [StructLayout(LayoutKind.Sequential)]struct AccentPolicy{public int State,Flags,Color,Animation;}
   [StructLayout(LayoutKind.Sequential)]struct CompositionData{public int Attribute;public IntPtr Data;public int Size;}
+  [StructLayout(LayoutKind.Sequential)]struct NativeRect{public int Left,Top,Right,Bottom;}
   [DllImport("ntdll.dll",CharSet=CharSet.Unicode)]static extern int RtlGetVersion(ref VersionInfo version);
   [DllImport("user32.dll")]static extern int SetWindowCompositionAttribute(IntPtr window,ref CompositionData data);
+  [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr window,int attribute,ref int value,int size);
+  [DllImport("dwmapi.dll")]static extern int DwmGetWindowAttribute(IntPtr window,int attribute,out int value,int size);
+  [DllImport("user32.dll")]static extern bool GetWindowRect(IntPtr window,out NativeRect rect);
+  [DllImport("user32.dll")]static extern int GetWindowRgn(IntPtr window,IntPtr region);
+  [DllImport("gdi32.dll")]static extern IntPtr CreateRectRgn(int left,int top,int right,int bottom);
+  [DllImport("gdi32.dll")]static extern bool PtInRegion(IntPtr region,int x,int y);
   [DllImport("user32.dll")]static extern int SetWindowRgn(IntPtr window,IntPtr region,bool redraw);
   [DllImport("gdi32.dll")]static extern IntPtr CreateRoundRectRgn(int left,int top,int right,int bottom,int ellipseWidth,int ellipseHeight);
   [DllImport("gdi32.dll")]static extern bool DeleteObject(IntPtr value);
   public static readonly bool Supported=IsSupported();
-  public bool Active{get;private set;}public int LastResult{get;private set;}
-  static bool IsSupported(){try{var info=new VersionInfo{Size=Marshal.SizeOf(typeof(VersionInfo))};return RtlGetVersion(ref info)==0&&info.Major>=10&&info.Build>=17763;}catch{return false;}}
+  public bool Active{get;private set;}public int LastResult{get;private set;}public int LastRegionResult{get;private set;}
+  int regionWidth,regionHeight,regionRoundX,regionRoundY;IntPtr regionWindow;readonly NativeBackdrop backdrop=new NativeBackdrop();
+  static bool IsSupported(){try{var info=new VersionInfo{Size=Marshal.SizeOf(typeof(VersionInfo))};return RtlGetVersion(ref info)==0&&info.Major>=10&&info.Build>=22000;}catch{return false;}}
   public bool Apply(Window window,bool enabled,bool dark){
    Active=false;if(!Supported)return false;IntPtr handle=new WindowInteropHelper(window).Handle;if(handle==IntPtr.Zero)return false;
-   IntPtr memory=IntPtr.Zero;try{var policy=new AccentPolicy{State=enabled?3:0};memory=Marshal.AllocHGlobal(Marshal.SizeOf(policy));Marshal.StructureToPtr(policy,memory,false);var data=new CompositionData{Attribute=19,Data=memory,Size=Marshal.SizeOf(policy)};LastResult=SetWindowCompositionAttribute(handle,ref data);Active=enabled&&LastResult!=0;}
-   catch{LastResult=0;}finally{if(memory!=IntPtr.Zero)Marshal.FreeHGlobal(memory);}return Active;
+   IntPtr memory=IntPtr.Zero;try{var policy=new AccentPolicy{State=0};memory=Marshal.AllocHGlobal(Marshal.SizeOf(policy));Marshal.StructureToPtr(policy,memory,false);var data=new CompositionData{Attribute=19,Data=memory,Size=Marshal.SizeOf(policy)};SetWindowCompositionAttribute(handle,ref data);backdrop.Enabled=false;LastResult=0;if(enabled&&backdrop.Ensure()){policy.State=3;Marshal.StructureToPtr(policy,memory,false);LastResult=1;foreach(var target in backdrop.Handles)if(SetWindowCompositionAttribute(target,ref data)==0)LastResult=0;backdrop.Enabled=LastResult!=0;}Active=backdrop.Enabled;
+    // Accent and WPF draw separately. Suppress the native frame as well as the
+    // app border, and reapply the physical region after composition changes.
+    int noBorder=-2;var targets=new System.Collections.Generic.List<IntPtr>(backdrop.Handles);targets.Add(handle);foreach(var target in targets)if(target!=IntPtr.Zero){int frame=target==handle?1:0,corners=target==handle?1:2;DwmSetWindowAttribute(target,2,ref frame,4);DwmSetWindowAttribute(target,34,ref noBorder,4);DwmSetWindowAttribute(target,33,ref corners,4);}regionWindow=IntPtr.Zero;Resize(window,8);
+    if(Active&&!backdrop.ShapeReady()){backdrop.Enabled=false;Active=false;backdrop.Sync(window,8);}
+   }catch{LastResult=0;Active=false;backdrop.Enabled=false;backdrop.Sync(window,8);}finally{if(memory!=IntPtr.Zero)Marshal.FreeHGlobal(memory);}return Active;
   }
-  public void Resize(Window window,double radius){IntPtr handle=new WindowInteropHelper(window).Handle;if(handle==IntPtr.Zero)return;try{var source=PresentationSource.FromVisual(window);if(source==null||source.CompositionTarget==null)return;var dpi=source.CompositionTarget.TransformToDevice;int width=(int)Math.Ceiling(window.ActualWidth*dpi.M11),height=(int)Math.Ceiling(window.ActualHeight*dpi.M22),round=(int)Math.Round(radius*2*dpi.M11);IntPtr region=CreateRoundRectRgn(0,0,width+1,height+1,round,round);if(region!=IntPtr.Zero&&SetWindowRgn(handle,region,true)==0)DeleteObject(region);}catch{}}
+  public void Resize(Window window,double radius){IntPtr handle=new WindowInteropHelper(window).Handle;if(handle==IntPtr.Zero)return;try{backdrop.Sync(window,radius);var source=PresentationSource.FromVisual(window);if(source==null||source.CompositionTarget==null)return;NativeRect rect;if(!GetWindowRect(handle,out rect))return;var dpi=source.CompositionTarget.TransformToDevice;int width=rect.Right-rect.Left,height=rect.Bottom-rect.Top,roundX=(int)Math.Round(radius*2*dpi.M11),roundY=(int)Math.Round(radius*2*dpi.M22);if(width<=0||height<=0)return;if(handle==regionWindow&&width==regionWidth&&height==regionHeight&&roundX==regionRoundX&&roundY==regionRoundY)return;IntPtr region=CreateRoundRectRgn(0,0,width,height,roundX,roundY);if(region==IntPtr.Zero){LastRegionResult=0;return;}LastRegionResult=SetWindowRgn(handle,region,true);if(LastRegionResult==0){DeleteObject(region);return;}regionWindow=handle;regionWidth=width;regionHeight=height;regionRoundX=roundX;regionRoundY=roundY;}catch{LastRegionResult=0;}}
+  public bool BackdropShapeReady(){return !Active||backdrop.ShapeReady();}
+  public bool BackdropAligned(Window window){return !Active||backdrop.Aligned(window);}
+  public bool BackdropHidden{get{return backdrop.Hidden;}}
+  public void Dispose(){backdrop.Dispose();Active=false;}
+  public bool NativeCornersClear(Window window){IntPtr region=CreateRectRgn(0,0,0,0);if(region==IntPtr.Zero)return false;try{NativeRect rect;IntPtr handle=new WindowInteropHelper(window).Handle;if(!GetWindowRect(handle,out rect)||GetWindowRgn(handle,region)==0)return false;int w=rect.Right-rect.Left,h=rect.Bottom-rect.Top;return w>0&&h>0&&!PtInRegion(region,0,0)&&!PtInRegion(region,w-1,0)&&!PtInRegion(region,0,h-1)&&!PtInRegion(region,w-1,h-1)&&!PtInRegion(region,2,2)&&!PtInRegion(region,w-3,2)&&!PtInRegion(region,2,h-3)&&!PtInRegion(region,w-3,h-3)&&PtInRegion(region,w/2,h/2);}finally{DeleteObject(region);}}
+  public bool NativeFrameSuppressed(Window window){int enabled;return DwmGetWindowAttribute(new WindowInteropHelper(window).Handle,1,out enabled,4)==0&&enabled==0;}
  }
  public static class MenuAppearance {
   static Brush BoundBrush(Brush source){var mutable=source as SolidColorBrush;if(mutable==null)return source;var proxy=new SolidColorBrush();BindingOperations.SetBinding(proxy,SolidColorBrush.ColorProperty,new Binding("Color"){Source=mutable,Mode=BindingMode.OneWay});return proxy;}

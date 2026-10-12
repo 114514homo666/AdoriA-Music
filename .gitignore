@@ -7,5 +7,6 @@ diagnostic.log
 *-result.json
 media-*.json
 preview-error.txt
+animation-sample.json
 ui-verification/
 verification-runs/

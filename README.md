@@ -1,43 +1,44 @@
 # AdoriA MUSIC
 
-支持网易云音乐与 QQ 音乐的 Windows 悬浮窗：封面、同步歌词、播放进度、自由缩放、独立背景透明度，以及白、蓝、灰、黑四种配色和毛玻璃效果。
+支持网易云音乐与 QQ 音乐的 Windows 悬浮窗，显示封面、同步歌词、进度与总时长，提供四种配色、毛玻璃和独立背景透明度。
 
-## 下载
+## v1.5.1
 
-从 [最新版 Releases](https://github.com/114514homo666/AdoriA-Music/releases/latest) 下载 `AdoriA-Music-v1.4.0-win-x64.zip`，完整解压后运行 `AdoriA-Music.exe`。升级前请退出旧版。
+从 [v1.5.1 发布页](https://github.com/114514homo666/AdoriA-Music/releases/tag/v1.5.1) 下载 AdoriA-Music-v1.5.1-win-x64.zip，完整解压，退出旧版悬浮窗后运行 AdoriA-Music.exe。无需安装或管理员权限。发布程序与已通过本地审查的 v1.5.1 程序一致。
 
-无需安装或管理员权限。支持 Windows 10/11 64 位，使用系统自带的 .NET Framework 4.x；QQ 系统媒体接口需要 Windows 10 1809 或更新版本。
+本版修复四角外的灰色直角残边，并重新利用竖向长窗的空白。毛玻璃改为独立背景层，由 Windows 11 合成器绘制圆角；前景使用一致的 8 DIP 圆角，去掉窗口描边。Windows 10 使用普通透明背景，其他功能仍可使用。
 
-## 外观
+## 窗口与外观
 
-顶部调色盘或右键“颜色与毛玻璃”可切换四种颜色、开关毛玻璃，调整大小与背景不透明度。文字、进度、按钮、菜单及提示都随主题变化；配色与大小切换带过渡动画，偏好会保存。
+- 拖动任意四角或四边调整大小，宽高独立变化，可做横向歌词条、竖向长窗或小窗。最小尺寸 240×64，位置和尺寸自动保存。
+- 竖向空间充足时，恢复封面、歌手、上下歌词、翻译、进度和时长。封面随可用空间变大，封面、歌手和歌名纵向居中排列，歌词另占中部。
+- 小窗逐步收起次要内容；最小窗保留当前歌词、播放／暂停、调色板、设置和关闭。长歌词按空间换行或省略。
+- 调色板提供白、蓝、灰、黑、毛玻璃开关及 0%–100% 背景不透明度。文字和图标不随背景变淡，默认背景 35%。
+- 齿轮设置集中提供播放器切换、恢复大小、置顶、精简显示、歌词偏移、重试、诊断、LRC 导入、重连和退出。菜单随主题配色。
+- 没有缩放滑条、Ctrl＋滚轮缩放、右键菜单、悬停提示或文字描边。过渡动画目标为 120 帧，本机采样的动画值变化中位间隔约 8.33 毫秒。
 
-- 缩放范围 70%–180%：拖动右下角、按住 Ctrl 滚动滚轮，或使用“窗口缩放”滑条。文字、封面、歌词和控件一起按比例变化，完整与精简模式都适用。
-- 背景不透明度滑条为 0%–100%：0% 全透明，100% 实色，默认 35%。只改变背景，文字与图标保持清晰。
-- 毛玻璃实时模糊窗口后的内容，去掉旧版浓重底色；滑条可连续调整通透程度。调到 0% 时关闭模糊，完整透出背景。
+![完整窗口](preview-default-v151.jpg)
 
-![新版毛玻璃悬浮窗](preview-main-v140.jpg)
+![竖向重排](preview-portrait-v151.jpg)
 
-![配套滑条菜单](preview-controls-v140.jpg)
+![横向歌词条](preview-wide-v151.jpg)
 
-毛玻璃通过本窗口的 Windows 合成模糊兼容接口实现；本机 Windows 11 已实测。Windows 10 1809+ 会尝试启用，接口不支持时保留普通透明背景。系统版本和图形环境可能影响效果，软件不更改系统设置。
+![最小窗口](preview-mini-v151.jpg)
 
 ## 播放器与歌词
 
-- 点击播放器名称切换网易云音乐／QQ 音乐；切换读取来源不会改变音乐播放。
-- 显示封面、歌手、主歌名、同步歌词、翻译、播放进度及总时长。
-- 图钉控制置顶；− / + 切换完整／精简模式；拖动空白处移动窗口。
-- QQ 音乐需要启用“设置 → 常规设置 → 通知 → 显示系统媒体传输控件（SMTC）”。
-- QQ 歌词联网匹配歌名、歌手及有效时长，保留版本区分；网络失败自动重试，右键可以重新获取或复制诊断信息，也可导入 LRC。
+顶部播放器名称或设置中选择网易云音乐／QQ 音乐；小窗使用设置。来源切换不改变歌曲播放。
 
-完整操作、数据来源与限制见 [使用说明](使用说明.md)。
+QQ 音乐需启用“设置 → 常规设置 → 通知 → 显示系统媒体传输控件（SMTC）”。歌词按歌名、歌手、版本和有效时长匹配，网络失败自动重试。设置中可重试、复制诊断或导入 LRC。详见 [使用说明](使用说明.md)。
 
-## 从源码构建与验证
+## 构建与验证
 
-在 Windows PowerShell 中运行 `./build.ps1`，会生成 `AdoriA-Music.exe`。不依赖 NuGet 或额外安装工具，使用 Windows 自带的 C# 编译器和 WPF。
+在 Windows PowerShell 中运行 ./build.ps1，使用系统自带的 C# 编译器与 WPF，无 NuGet 依赖。./verify.ps1 执行 30 项歌词及 87 项界面检查。本机实测见 [验证记录](验证记录.md)。
 
-运行 `./verify.ps1` 执行 30 项歌词检查与 51 项屏幕外界面检查。验证记录见 [验证记录](验证记录.md)。保留 QQ 音乐支持及歌词兼容修复。
+Windows 10/11 64 位、.NET Framework 4.x；QQ 系统媒体接口需要 Windows 10 1809 或更新版本。圆角毛玻璃需要 Windows 11 支持的系统合成接口，否则退回普通透明背景。实际效果与帧率取决于图形环境和显示器。
 
-缓存及诊断位于 `%LOCALAPPDATA%\AdoriA-Music\`，窗口设置位于程序旁。软件不读取登录凭据、不注入代码、不修改播放器文件。
+缓存和日志位于 %LOCALAPPDATA%\AdoriA-Music\，设置位于程序旁，不随压缩包分发。本版没有修改歌曲读取或歌词网络逻辑。
 
-参考：[Microsoft 窗口合成接口](https://learn.microsoft.com/en-us/windows/win32/dwm/setwindowcompositionattribute)、[QQ 音乐公开接口研究](https://github.com/WXRIW/Lyricify-Lyrics-Helper/blob/master/Lyricify.Lyrics.Helper/Providers/Web/QQMusic/Api.cs)、[网易云本地播放数据研究](https://github.com/YUCLing/netease-watcher)。DeepSeek 参与动画、系统媒体适配、歌词复核及本版滑条控件制作；Codex 完成修订、集成、缩放与背景分层、毛玻璃和验证。本项目与两个播放器厂商无关联。
+DeepSeek 通过 ACP 协助复核圆角残边；Codex 复现问题、实现独立背景层、重排竖向界面并完成集成验证。此前的拉伸计算、动画、滑条和系统媒体适配亦包含 DeepSeek 的贡献。
+
+参考：[Microsoft 系统圆角说明](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/ui/apply-rounded-corners)、[Microsoft 动画目标帧率](https://learn.microsoft.com/en-us/dotnet/api/system.windows.media.animation.timeline.desiredframerate?view=windowsdesktop-10.0)。本项目与播放器厂商无关联。
