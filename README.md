@@ -1,46 +1,37 @@
 # AdoriA MUSIC
 
-Windows 上的网易云音乐悬浮窗，显示歌曲封面、歌手、歌名、同步歌词与播放进度。
+支持网易云音乐与 QQ 音乐的 Windows 悬浮窗：封面、同步歌词、播放进度，以及白、蓝、灰、黑四种配色和毛玻璃效果。
 
-## 下载与运行
+## 下载
 
-前往 [Releases](https://github.com/114514homo666/AdoriA-Music/releases/latest)，下载 `AdoriA-Music-v1.1.0-win-x64.zip`，解压后双击 `CloudMusicFloat.exe`，在网易云音乐中播放歌曲即可。
+从 [最新版 Releases](https://github.com/114514homo666/AdoriA-Music/releases/latest) 下载 `AdoriA-Music-v1.3.0-win-x64.zip`，完整解压后运行 `AdoriA-Music.exe`。升级前请退出旧版。
 
-无需安装，不需要管理员权限。适用于 Windows 64 位，依赖系统自带的 .NET Framework 4.x。本机已验证 Microsoft Store 网易云音乐 3.1.23（64 位）。
+无需安装或管理员权限。支持 Windows 10/11 64 位，使用系统自带的 .NET Framework 4.x；QQ 系统媒体接口需要 Windows 10 1809 或更新版本。
 
-## 功能
+## 外观
 
-- 自动更新歌曲封面、歌手与歌名，歌手显示在主歌名上方。
-- 完整模式显示前后歌词及翻译；精简模式在歌名下显示当前歌词。
-- 显示当前进度、总时长，以及播放／暂停按钮。
-- 图钉控制置顶，支持拖动、透明度调整、歌词时间偏移及导入 LRC。
-- 模式切换、文字、封面、进度和按钮状态均带过渡动画。
+顶部调色盘或右键“颜色与毛玻璃”可切换四种颜色，并打开或关闭毛玻璃。文字、进度、按钮、颜色菜单、播放器菜单、右键菜单及子菜单都随主题变化；配色切换带过渡动画，偏好会保存。
 
-## 操作
+![配套颜色菜单](preview-menu-blue.jpg)
 
-| 操作 | 功能 |
-| --- | --- |
-| 拖动空白处 | 移动窗口 |
-| 图钉 | 切换始终置顶 |
-| − / + | 切换完整／精简模式 |
-| ▶ / Ⅱ | 播放／暂停 |
-| 右键 | 透明度、歌词偏移、导入 LRC、重新连接 |
-| × 或 Esc | 退出 |
+毛玻璃使用 Windows 11 22H2 及更新版本的桌面 Acrylic。较早系统使用普通背景；显示效果还受 Windows 透明效果设置、远程桌面和图形环境影响。软件不更改系统设置。
 
-## 从源码构建
+## 播放器与歌词
 
-下载源码，在 Windows PowerShell 中运行 `./build.ps1`，会在同一目录生成 `CloudMusicFloat.exe`。构建使用 Windows 自带的 .NET Framework C# 编译器及 WPF 程序集。
+- 点击播放器名称切换网易云音乐／QQ 音乐；切换读取来源不会改变音乐播放。
+- 显示封面、歌手、主歌名、同步歌词、翻译、播放进度及总时长。
+- 图钉控制置顶；− / + 切换完整／精简模式；拖动空白处移动窗口。
+- QQ 音乐需要启用“设置 → 常规设置 → 通知 → 显示系统媒体传输控件（SMTC）”。
+- QQ 歌词联网匹配歌名、歌手及有效时长，保留版本区分；网络失败自动重试，右键可以重新获取或复制诊断信息，也可导入 LRC。
 
-`CloudMusicFloat.cs` 为主程序；`Motion.cs` 为动画工具类。更多说明见 [使用说明](使用说明.md) 和 [验证记录](验证记录.md)。
+完整操作、数据来源与限制见 [使用说明](使用说明.md)。
 
-## 数据与兼容性
+## 从源码构建与验证
 
-歌曲资料来自网易云本地播放数据库；进度通过只读访问网易云进程中的播放数据获取。程序不修改网易云文件、不注入代码、不读取登录凭据，也不改变系统设置。封面与歌词从网易云公开地址获取，缓存在程序旁的 `cache` 目录。
+在 Windows PowerShell 中运行 `./build.ps1`，会生成 `AdoriA-Music.exe`。不依赖 NuGet 或额外安装工具，使用 Windows 自带的 C# 编译器和 WPF。
 
-播放按钮使用 Windows 标准媒体键，同时运行多个播放器时由 Windows 分配控制对象。暂停状态依据进度变化判断，约有 1 秒延迟。
+运行 `./verify.ps1` 执行歌词检查及屏幕外界面检查。验证记录见 [验证记录](验证记录.md)。本次发布包含自 v1.1.0 以来的 QQ 音乐支持和 v1.2.1 歌词兼容修复。
 
-网易云升级后可能需要更新进度读取特征。本地音乐、电台、播客等特殊模式的资料可能不完整。封面及歌词属于其各自权利人，项目与网易云音乐无关联。
+缓存及诊断位于 `%LOCALAPPDATA%\AdoriA-Music\`，窗口设置位于程序旁。软件不读取登录凭据、不注入代码、不修改播放器文件。
 
-## 致谢
-
-本地数据库及进度特征参考 [netease-watcher](https://github.com/YUCLing/netease-watcher) 的研究，程序独立实现。DeepSeek 通过 ACP 协作编写动画工具类，Codex 完成界面集成、播放控制及验证。
+参考：[Microsoft 桌面背景材料](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type)、[Microsoft WPF 玻璃区域](https://learn.microsoft.com/en-us/dotnet/desktop/wpf/graphics-multimedia/extend-glass-frame-into-a-wpf-application)、[QQ 音乐公开接口研究](https://github.com/WXRIW/Lyricify-Lyrics-Helper/blob/master/Lyricify.Lyrics.Helper/Providers/Web/QQMusic/Api.cs)、[网易云本地播放数据研究](https://github.com/YUCLing/netease-watcher)。DeepSeek 参与动画、系统媒体适配及歌词复核，Codex 完成集成、配色与菜单、原生毛玻璃及验证。本项目与两个播放器厂商无关联。

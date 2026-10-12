@@ -1,9 +1,11 @@
-CloudMusicFloat.exe
+*.exe
+*.zip
 cache/
 settings.json
 diagnostic.log
-probe-result.json
-control-result.json
-preview.png
+*-probe.*
+*-result.json
+media-*.json
+preview-error.txt
 ui-verification/
-*.zip
+verification-runs/
