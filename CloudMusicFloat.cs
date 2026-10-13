@@ -22,12 +22,13 @@ using Microsoft.Win32;
 using System.Windows.Interop;
 using System.Windows.Shell;
 
-[assembly:System.Reflection.AssemblyVersion("1.5.1.0")]
-[assembly:System.Reflection.AssemblyFileVersion("1.5.1.0")]
+[assembly:System.Reflection.AssemblyVersion("1.5.4.0")]
+[assembly:System.Reflection.AssemblyFileVersion("1.5.4.0")]
 namespace CloudMusicFloat {
  public class Song {
   public string Id="", Title="", Artist="", Album="", Cover="", Source="NetEase"; public double Duration; public byte[] CoverBytes;
   public string CacheKey {get{return Source+"-"+Id;}}
+  public Song Snapshot(){return (Song)MemberwiseClone();}
   public static Song Parse(string json) {
    var d=Json.Read(json);var album=Json.Obj(d,"album");var artists=Json.Arr(d,"artists");
    return new Song {Id=Json.Str(d,"id"),Title=Json.Str(d,"name"),Artist=String.Join(" / ",artists.Select(x=>Json.Str(x as Dictionary<string,object>,"name"))),Album=Json.Str(album,"name"),Cover=Json.Str(album,"picUrl"),Duration=Json.Num(d,"duration")/1000.0};
@@ -130,6 +131,7 @@ namespace CloudMusicFloat {
   CancellationTokenSource lyricCancellation;
   LyricService lyricService;
   readonly GlassEffect glass=new GlassEffect();ContextMenu appearanceMenu;SolidColorBrush edge=new SolidColorBrush(),trackBrush=new SolidColorBrush(),artworkBrush=new SolidColorBrush();GradientStop surfaceTop=new GradientStop(),surfaceBottom=new GradientStop();
+  CursorGuardLifetime cursorProtection;
   SolidColorBrush menuSurface=new SolidColorBrush(),menuHover=new SolidColorBrush();
   TextBlock sourceLabel;Button sourceButton;ContextMenu sourceMenu;MenuItem netEaseItem,qqItem;
   TextBlock title,artist,compactLyric,previous,current,next,translation,time,status,brand,compactLabel;Image cover;Border artwork,progressFill,lyricsViewport,compactLyricSlot;Grid progressTrack;StackPanel lyricsPanel;Button compactButton,pinButton,playButton;
@@ -163,13 +165,14 @@ namespace CloudMusicFloat {
    var area=SystemParameters.WorkArea;Left=Double.IsNaN(settings.Left)?area.Right-Width-28:Math.Max(area.Left,Math.Min(area.Right-Width,settings.Left));Top=Double.IsNaN(settings.Top)?area.Top+90:Math.Max(area.Top,Math.Min(area.Bottom-Height,settings.Top));
    if(isVerification){settings.Compact=false;settings.Scale=1;settings.Topmost=false;settings.Player="NetEase";ShowActivated=false;ShowInTaskbar=false;Left=Top=-10000;}Build();ApplyTheme(false);RestoreDimensions();ApplyCompact(false);if(!isVerification)FindData();
    SourceInitialized+=(s,e)=>{ApplyTheme(false);QueueRoundedClip();var source=(HwndSource)PresentationSource.FromVisual(this);if(source!=null)source.AddHook((IntPtr hwnd,int message,IntPtr w,IntPtr l,ref bool handled)=>{if(message==0x031e||message==0x0320)Dispatcher.BeginInvoke(new Action(()=>{ApplyTheme(false);QueueRoundedClip();}));if(message==0x0005||message==0x02e0||message==0x0047)QueueRoundedClip();return IntPtr.Zero;});};
+   if(!isVerification)cursorProtection=new CursorGuardLifetime(this,()=>{foreach(var menu in new[]{appearanceMenu,sourceMenu,settingsMenu})if(menu!=null)menu.IsOpen=false;if(Mouse.Captured!=null)Mouse.Capture(null);},null,Log);
    ContentRendered+=(s,e)=>QueueRoundedClip();
-   StateChanged+=(s,e)=>QueueRoundedClip();IsVisibleChanged+=(s,e)=>QueueRoundedClip();Closed+=(s,e)=>glass.Dispose();
+   StateChanged+=(s,e)=>QueueRoundedClip();IsVisibleChanged+=(s,e)=>QueueRoundedClip();Closed+=(s,e)=>{if(cursorProtection!=null)cursorProtection.Dispose();glass.Dispose();};
    MouseLeftButtonDown+=(s,e)=>{if(e.ButtonState==MouseButtonState.Pressed&&!IsInteractive(e.OriginalSource as DependencyObject)){try{DragMove();Save();}catch{}}};
 
    SizeChanged+=(s,e)=>ApplyResponsiveLayout();
    Closing+=(s,e)=>{CancelLyrics();if(!closingAnimated&&!isVerification){e.Cancel=true;closingAnimated=true;sourceRevision++;clock.Stop();Motion.Fade(card,0,150);var scale=(ScaleTransform)card.RenderTransform;Motion.To(scale,ScaleTransform.ScaleXProperty,.97,150);Motion.To(scale,ScaleTransform.ScaleYProperty,.97,150);Later(170,()=>Close());return;}Save();reader.Dispose();Task.Run(()=>mediaReader.Dispose());};
-   KeyDown+=(s,e)=>{if(e.Key!=Key.Escape)return;bool menuOpen=false;foreach(var menu in new[]{appearanceMenu,sourceMenu,settingsMenu})if(menu!=null&&menu.IsOpen){menu.IsOpen=false;menuOpen=true;}e.Handled=true;if(!menuOpen)Close();};
+   KeyDown+=(s,e)=>{if(e.Key!=Key.Escape)return;foreach(var menu in new[]{appearanceMenu,sourceMenu,settingsMenu})if(menu!=null&&menu.IsOpen){menu.IsOpen=false;e.Handled=true;}};
    clock=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(250)};clock.Tick+=Tick;if(!isVerification)clock.Start();
    Loaded+=async(s,e)=>{card.Opacity=0;var scale=(ScaleTransform)card.RenderTransform;scale.ScaleX=scale.ScaleY=.97;Motion.Fade(card,1,230);Motion.To(scale,ScaleTransform.ScaleXProperty,1,230);Motion.To(scale,ScaleTransform.ScaleYProperty,1,230);UpdateRoundedClip();if(!isVerification)await RefreshSong();};
   }
@@ -221,7 +224,7 @@ namespace CloudMusicFloat {
    pinSetting=new MenuItem{Header="始终置顶",IsCheckable=true};pinSetting.Click+=(s,e)=>{Topmost=!Topmost;settings.Topmost=Topmost;ApplyTheme(true);Save();};menu.Items.Add(pinSetting);
    compactSetting=new MenuItem{Header="精简显示",IsCheckable=true};compactSetting.Click+=(s,e)=>{settings.Compact=!settings.Compact;ApplyCompact(true);Save();};menu.Items.Add(compactSetting);menu.Opened+=(s,e)=>{pinSetting.IsChecked=Topmost;compactSetting.IsChecked=settings.Compact;};menu.Items.Add(new Separator());
    AddMenu(menu,"歌词提前 0.5 秒",()=>{settings.Offset+=.5;lyricIndex=-999;Save();});AddMenu(menu,"歌词延后 0.5 秒",()=>{settings.Offset-=.5;lyricIndex=-999;Save();});AddMenu(menu,"重置歌词偏移",()=>{settings.Offset=0;lyricIndex=-999;Save();});
-   AddMenu(menu,"重新获取歌词",()=>{if(song!=null)LoadCurrentLyrics(song,sourceRevision,true);});AddMenu(menu,"复制歌词诊断信息",()=>{try{Clipboard.SetText("AdoriA MUSIC v1.5.1\n"+(song==null?PlayerName:song.Source+" · "+song.Title+" / "+song.Artist)+"\n"+lyricState+"\n"+lyricDetails);}catch{}});
+   AddMenu(menu,"重新获取歌词",()=>{if(song!=null)LoadCurrentLyrics(song,sourceRevision,true);});AddMenu(menu,"复制歌词诊断信息",()=>{try{Clipboard.SetText("AdoriA MUSIC v"+typeof(Overlay).Assembly.GetName().Version+"\n"+(song==null?PlayerName:song.Source+" · "+song.Title+" / "+song.Artist)+"\n"+lyricState+"\n"+lyricDetails);}catch{}});
    AddMenu(menu,"导入当前歌曲的 LRC 歌词…",ImportLrc);AddMenu(menu,"重新连接",()=>SwitchPlayer(settings.Player,true));menu.Items.Add(new Separator());AddMenu(menu,"退出",()=>Close());settingsMenu=menu;ContextMenu=null;
    foreach(var popup in new[]{sourceMenu,appearanceMenu,menu})MenuAppearance.Configure(popup,menuSurface,menuHover,white,edge);
    ToolTipService.SetIsEnabled(this,false);foreach(var popup in new[]{sourceMenu,appearanceMenu,menu})ToolTipService.SetIsEnabled(popup,false);
@@ -269,7 +272,7 @@ namespace CloudMusicFloat {
   async void Tick(object sender,EventArgs e) {
    ticks++;if(ticks%4==0&&!busy)await RefreshSong();
    if(song==null)return;
-   if(!lyricBusy&&lyrics.Count==0&&lyricRetry.Due(DateTime.UtcNow))LoadCurrentLyrics(song,sourceRevision);
+   RetryCurrentLyricsIfDue(DateTime.UtcNow);
    if(settings.Player=="QQMusic"){
     if(mediaSnapshot==null)return;position=mediaSnapshot.Position+(mediaSnapshot.Playing?Math.Max(0,(DateTime.UtcNow-mediaReadAt).TotalSeconds):0);if(song.Duration>0)position=Math.Min(song.Duration,position);
     SetPlayback(mediaSnapshot.Playing);time.Text=Format(position)+" / "+Format(song.Duration);SetProgress(position/Math.Max(1,song.Duration));UpdateLyric(position+settings.Offset);return;
@@ -293,27 +296,41 @@ namespace CloudMusicFloat {
      return ReadCurrentSong();
     });
     if(revision!=sourceRevision||closingAnimated)return;
+    await AcceptSongSnapshot(fresh,snapshot,revision,selected);
+   }catch(Exception ex){if(revision==sourceRevision)Motion.Text(status,"暂时无法读取播放信息");Log(ex.Message);}finally{if(revision==sourceRevision)busy=false;}
+  }
+  async Task AcceptSongSnapshot(Song fresh,MediaSnapshot snapshot,int revision,string selected){
+    if(revision!=sourceRevision||closingAnimated)return;
     if(snapshot!=null){mediaSnapshot=snapshot;mediaReadAt=DateTime.UtcNow;}
     if(fresh==null){if(song!=null){CancelLyrics();lyricRetry.Reset();}song=null;currentId="";Motion.Text(title,"等待"+PlayerName);Motion.Text(artist,"打开"+PlayerName+"并播放一首歌曲");SetCover(null);lyrics.Clear();SetLyricTexts("","等待播放歌曲","","");time.Text="--:-- / --:--";SetPlayback(null);Motion.Text(status,selected=="QQMusic"?mediaReader.Error:"未连接");SetProgress(0);reader.Dispose();return;}
-    Motion.Text(status,"");if(fresh.CacheKey==currentId){if(fresh.Duration>0)song.Duration=fresh.Duration;if(fresh.Source=="QQMusic"&&cover.Source==null&&fresh.CoverBytes!=null){var picture=await LoadCover(fresh);if(revision==sourceRevision&&currentId==fresh.CacheKey)SetCover(picture);}return;}
+    Motion.Text(status,"");if(fresh.CacheKey==currentId){
+     if(fresh.Duration<=0||Double.IsNaN(fresh.Duration)||Double.IsInfinity(fresh.Duration))fresh.Duration=song.Duration;
+     bool corrected=song.Title!=fresh.Title||song.Artist!=fresh.Artist||song.Album!=fresh.Album||(song.Duration<=0&&fresh.Duration>0)||Math.Abs(song.Duration-fresh.Duration)>6;
+     // Replace rather than mutate the Song used by an in-flight lyric matcher.
+     song=fresh;
+     if(corrected&&(lyrics.Count==0||fresh.Source=="QQMusic")){CancelLyrics();lyricRetry.Reset();lyrics.Clear();lyricDetails="";lyricState="正在获取歌词…";lyricIndex=-999;UpdateLyric(0);LoadCurrentLyrics(fresh,revision,false,true);}
+     if(fresh.Source=="QQMusic"&&cover.Source==null&&fresh.CoverBytes!=null){var picture=await LoadCover(fresh);if(revision==sourceRevision&&currentId==fresh.CacheKey)SetCover(picture);}return;
+    }
     CancelLyrics();lyricRetry.Reset();lyricDetails="";song=fresh;currentId=fresh.CacheKey;lyrics.Clear();lyricIndex=-999;lastPosition=Double.NaN;lastMove=DateTime.MinValue;position=snapshot==null?Double.NaN:snapshot.Position;
     Motion.Text(title,song.Title);Motion.Text(artist,song.Artist);SetCover(null);SetLyricTexts("","正在获取歌词…","","");lyricState="正在获取歌词…";
     LoadSongAssets(fresh,revision);
-   }catch(Exception ex){if(revision==sourceRevision)Motion.Text(status,"暂时无法读取播放信息");Log(ex.Message);}finally{if(revision==sourceRevision)busy=false;}
   }
+  void RetryCurrentLyricsIfDue(DateTime now){if(song!=null&&!lyricBusy&&lyrics.Count==0&&lyricRetry.Due(now))LoadCurrentLyrics(song,sourceRevision,false,true);}
   async void LoadSongAssets(Song requested,int revision){
    LoadCurrentLyrics(requested,revision);
    try{var picture=await LoadCover(requested);if(revision!=sourceRevision||currentId!=requested.CacheKey||closingAnimated)return;SetCover(picture);}
    catch(Exception ex){Log(ex.Message);}
   }
   void CancelLyrics(){lyricRequestRevision++;lyricBusy=false;if(lyricCancellation!=null){lyricCancellation.Cancel();lyricCancellation.Dispose();lyricCancellation=null;}}
-  async void LoadCurrentLyrics(Song requested,int revision,bool refresh=false){
+  async void LoadCurrentLyrics(Song requested,int revision,bool refresh=false,bool bypassCache=false){
+   requested=requested.Snapshot();
    if(lyricBusy&&!refresh)return;if(refresh)CancelLyrics();lyricBusy=true;int requestRevision=++lyricRequestRevision;lyricCancellation=new CancellationTokenSource();var cancellation=lyricCancellation;
    if(refresh){lyricRetry.Reset();lyricState="正在重新获取歌词…";lyricIndex=-999;UpdateLyric(Double.IsNaN(position)?0:position+settings.Offset);}
-   try{var result=await lyricService.Load(requested,refresh,cancellation.Token);if(revision!=sourceRevision||currentId!=requested.CacheKey||requestRevision!=lyricRequestRevision||closingAnimated)return;
+   try{var result=await lyricService.Load(requested,refresh||bypassCache,cancellation.Token);if(revision!=sourceRevision||currentId!=requested.CacheKey||requestRevision!=lyricRequestRevision||closingAnimated)return;
     if(result.Lines.Count>0||lyrics.Count==0)lyrics=result.Lines;lyricDetails=result.Details;
-    lyricState=lyrics.Count>0?"♪":result.Message+(result.Retryable?" · 将自动重试":" · 可在设置中重试");
-    lyricRetry.Complete(lyrics.Count==0&&result.Retryable,DateTime.UtcNow);lyricIndex=-999;UpdateLyric(Double.IsNaN(position)?0:position+settings.Offset);
+    lyricRetry.Complete(lyrics.Count==0&&result.Retryable,DateTime.UtcNow,lyrics.Count==0&&result.Recheck);
+    lyricState=lyrics.Count>0?"♪":result.Message+(lyricRetry.Next!=DateTime.MaxValue?(result.Retryable?" · 将自动重试":" · 将自动复核"):" · 可在设置中重试");
+    lyricIndex=-999;UpdateLyric(Double.IsNaN(position)?0:position+settings.Offset);
    }catch(OperationCanceledException){}catch(Exception ex){Log("歌词加载："+ex);if(requestRevision==lyricRequestRevision)lyricRetry.Complete(true,DateTime.UtcNow);}
    finally{if(requestRevision==lyricRequestRevision){lyricBusy=false;lyricCancellation=null;cancellation.Dispose();}}
   }
@@ -368,7 +385,10 @@ namespace CloudMusicFloat {
     var restored=new JavaScriptSerializer().Deserialize<Settings>(Json.Write(settings));checks["appearanceSettingsRoundTrip"]=restored.Theme=="Black"&&restored.Glass;var legacy=new JavaScriptSerializer().Deserialize<Settings>("{\"Player\":\"QQMusic\"}");checks["oldSettingsHaveAppearanceDefaults"]=legacy.Theme=="Black"&&legacy.Glass&&legacy.Player=="QQMusic";
     int popupIndex=0;foreach(var popup in new[]{sourceMenu,appearanceMenu,settingsMenu}){popup.PlacementTarget=this;popup.IsOpen=true;popup.UpdateLayout();await Task.Delay(100);checks["customMenuOpens"+(++popupIndex)]=popup.IsOpen&&popup.Template!=null&&popup.Items.OfType<MenuItem>().All(item=>item.Template!=null);popup.IsOpen=false;}checks["rightClickMenuRemoved"]=ContextMenu==null;checks["dedicatedSettingsButton"]=settingsButton!=null&&controlStrip.Children.Contains(settingsButton);
     settings.Theme="White";ApplyTheme(false);appearanceMenu.IsOpen=true;appearanceMenu.UpdateLayout();await Task.Delay(100);checks["menuFollowsTheme"]=((SolidColorBrush)appearanceMenu.Background).Color==Palette.Get("White").Top&&((SolidColorBrush)appearanceMenu.Foreground).Color==Palette.Get("White").Text;appearanceMenu.IsOpen=false;settings.Theme="Black";ApplyTheme(false);
-    await VerifyAppearance(checks,dir);Snapshot(Path.Combine(dir,"final.png"));checks["passed"]=checks.Values.All(v=>v is bool&&(bool)v);
+    RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(this),Environment.TickCount,Key.Escape){RoutedEvent=Keyboard.KeyDownEvent});checks["escapeDoesNotExitOverlay"]=IsVisible&&!closingAnimated;
+    settingsMenu.PlacementTarget=this;settingsMenu.IsOpen=true;settingsMenu.UpdateLayout();RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(this),Environment.TickCount,Key.Escape){RoutedEvent=Keyboard.KeyDownEvent});checks["escapeClosesOnlyOpenMenu"]=!settingsMenu.IsOpen&&IsVisible&&!closingAnimated;
+    RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(this),Environment.TickCount,Key.Escape){RoutedEvent=Keyboard.KeyDownEvent});checks["escapeAfterClosingMenuDoesNotExit"]=IsVisible&&!closingAnimated;
+    await VerifyRecovery(checks,dir);VerifyCursorProtection(checks);await VerifyAppearance(checks,dir);Snapshot(Path.Combine(dir,"final.png"));checks["passed"]=checks.Values.All(v=>v is bool&&(bool)v);
    }catch(Exception ex){checks["error"]=ex.ToString();checks["passed"]=false;}
    File.WriteAllText(Path.Combine(dir,"result.json"),Json.Write(checks),Encoding.UTF8);Close();
   }

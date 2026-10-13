@@ -94,8 +94,6 @@ namespace CloudMusicFloat
                     object status = (pb == null) ? null : GetProperty(pb, _pbStatus);
                     snap.Playing = IsPlaying(status);
 
-                    FillTimeline(snap, _sessTimeline.Invoke(session, null), snap.Playing);
-
                     string err = null;
                     object op = CallMethod(session, _sessTryMedia, null, out err);
                     object mp = null;
@@ -118,6 +116,12 @@ namespace CloudMusicFloat
                     {
                         Error = "读取媒体信息失败";
                     }
+                    // Media properties are asynchronous. Read the timeline afterwards,
+                    // so a new title is not paired with a pre-await duration snapshot.
+                    pb = _sessPlayback.Invoke(session, null);
+                    status = (pb == null) ? null : GetProperty(pb, _pbStatus);
+                    snap.Playing = IsPlaying(status);
+                    FillTimeline(snap, _sessTimeline.Invoke(session, null), snap.Playing);
 
                 }
                 catch (Exception)

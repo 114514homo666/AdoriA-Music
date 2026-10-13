@@ -62,6 +62,7 @@ namespace CloudMusicFloat {
   public bool BackdropShapeReady(){return !Active||backdrop.ShapeReady();}
   public bool BackdropAligned(Window window){return !Active||backdrop.Aligned(window);}
   public bool BackdropHidden{get{return backdrop.Hidden;}}
+  public bool BackdropInputDisabled{get{return backdrop.InputDisabled;}}
   public void Dispose(){backdrop.Dispose();Active=false;}
   public bool NativeCornersClear(Window window){IntPtr region=CreateRectRgn(0,0,0,0);if(region==IntPtr.Zero)return false;try{NativeRect rect;IntPtr handle=new WindowInteropHelper(window).Handle;if(!GetWindowRect(handle,out rect)||GetWindowRgn(handle,region)==0)return false;int w=rect.Right-rect.Left,h=rect.Bottom-rect.Top;return w>0&&h>0&&!PtInRegion(region,0,0)&&!PtInRegion(region,w-1,0)&&!PtInRegion(region,0,h-1)&&!PtInRegion(region,w-1,h-1)&&!PtInRegion(region,2,2)&&!PtInRegion(region,w-3,2)&&!PtInRegion(region,2,h-3)&&!PtInRegion(region,w-3,h-3)&&PtInRegion(region,w/2,h/2);}finally{DeleteObject(region);}}
   public bool NativeFrameSuppressed(Window window){int enabled;return DwmGetWindowAttribute(new WindowInteropHelper(window).Handle,1,out enabled,4)==0&&enabled==0;}

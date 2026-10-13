@@ -16,12 +16,16 @@ namespace CloudMusicFloat {
   public bool Write(string name,string text){string temporary=null;try{Directory.CreateDirectory(CacheDirectory);string target=Path.Combine(CacheDirectory,name);temporary=target+"."+Guid.NewGuid().ToString("N")+".tmp";File.WriteAllText(temporary,text,Encoding.UTF8);if(File.Exists(target))File.Replace(temporary,target,null);else File.Move(temporary,target);return true;}catch(Exception ex){Log("缓存写入 "+name+"："+ex.Message);return false;}finally{if(temporary!=null)try{File.Delete(temporary);}catch{}}}
   public void Log(string text){try{lock(logGate){Directory.CreateDirectory(Path.GetDirectoryName(LogFile));if(File.Exists(LogFile)&&new FileInfo(LogFile).Length>1024*1024)File.WriteAllText(LogFile,"");File.AppendAllText(LogFile,DateTime.Now.ToString("s")+" "+text+Environment.NewLine,Encoding.UTF8);}}catch{}}
  }
- public class LyricFailure:Exception {public readonly bool Retryable;public LyricFailure(string message,bool retryable):base(message){Retryable=retryable;}}
- public class LyricResult {public List<LyricLine> Lines=new List<LyricLine>();public string Message="",Details="";public bool Retryable;}
+ public class LyricFailure:Exception {public readonly bool Retryable,Recheck;public LyricFailure(string message,bool retryable,bool recheck=false):base(message){Retryable=retryable;Recheck=recheck;}}
+ public class LyricResult {public List<LyricLine> Lines=new List<LyricLine>();public string Message="",Details="";public bool Retryable,Recheck;}
  public class LyricRetry {
-  public DateTime Next=DateTime.MaxValue;int attempts;
-  public void Reset(){attempts=0;Next=DateTime.MaxValue;}
-  public void Complete(bool retryable,DateTime now){if(!retryable){Reset();return;}int[] seconds={5,15,45,120};Next=now.AddSeconds(seconds[Math.Min(attempts++,seconds.Length-1)]);}
+  public DateTime Next=DateTime.MaxValue;int attempts,rechecks;
+  public void Reset(){attempts=rechecks=0;Next=DateTime.MaxValue;}
+  public void Complete(bool retryable,DateTime now,bool recheck=false){
+   if(retryable){int[] seconds={5,15,45,120};Next=now.AddSeconds(seconds[Math.Min(attempts++,seconds.Length-1)]);return;}
+   if(recheck){int[] seconds={2,5,12};Next=rechecks<seconds.Length?now.AddSeconds(seconds[rechecks++]):DateTime.MaxValue;return;}
+   Reset();
+  }
   public bool Due(DateTime now){return now>=Next;}
  }
  public static class LyricHttp {
@@ -56,9 +60,9 @@ namespace CloudMusicFloat {
      if(Json.Num(LyricHttp.ReadJson(json),"code")!=200)throw new LyricFailure("网易云歌词服务暂不可用",true);
      result.Lines=Lyrics.FromJson(json);if(result.Lines.Count>0)store.Write(name,json);
     }
-    if(result.Lines.Count==0)result.Message="该歌曲暂无同步歌词";
+    if(result.Lines.Count==0){result.Message="该歌曲暂无同步歌词";result.Recheck=true;}
    }catch(OperationCanceledException){throw;}catch(Exception ex){
-    var failure=ex as LyricFailure;result.Retryable=failure==null||failure.Retryable;var network=ex as WebException;
+    var failure=ex as LyricFailure;result.Retryable=failure==null||failure.Retryable;result.Recheck=failure!=null&&failure.Recheck;var network=ex as WebException;
     result.Message=failure!=null?failure.Message:network!=null?"歌词网络连接失败":"歌词获取失败";
     if(network!=null){if(network.Status==WebExceptionStatus.Timeout||network.Status==WebExceptionStatus.RequestCanceled)result.Message="歌词请求超时";else if(network.Status==WebExceptionStatus.TrustFailure||network.Status==WebExceptionStatus.SecureChannelFailure)result.Message="歌词安全连接失败";}
     if(network!=null&&network.Response is HttpWebResponse){int code=(int)((HttpWebResponse)network.Response).StatusCode;result.Message="歌词请求失败（HTTP "+code+"）";if(code>=400&&code<500&&code!=408&&code!=429)result.Retryable=false;network.Response.Close();}

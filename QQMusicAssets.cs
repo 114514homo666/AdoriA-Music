@@ -24,11 +24,12 @@ namespace CloudMusicFloat {
   public static Task<List<LyricLine>> LoadLyrics(Song song,string cache){return LoadLyrics(song,new AssetStore(cache),LyricHttp.Request,false);}
   public static async Task<List<LyricLine>> LoadLyrics(Song song,AssetStore store,Func<string,string,Task<string>> request,bool refresh){
    var transport=request;request=async(url,body)=>{try{return await transport(url,body);}catch(OperationCanceledException){throw;}catch(Exception ex){store.Log("QQ 请求失败 "+url+"："+ex.GetType().Name+" / "+ex.Message);throw;}};
-   string lyricName=song.CacheKey+".qq-lyrics.json",cached=refresh?null:store.Read(lyricName);
-   if(cached!=null)try{var lines=Parse(cached);if(lines.Count>0)return lines;}catch(Exception ex){store.Log("忽略损坏 QQ 歌词缓存："+ex.Message);}
    if(String.IsNullOrWhiteSpace(song.Artist))throw new LyricFailure("QQ 音乐未提供歌手信息",true);
    string matchName=song.CacheKey+".qq-match.json",mid="",match=refresh?null:store.Read(matchName);
-   if(match!=null)try{var value=Json.Read(match);if(Json.Str(value,"title")==song.Title&&Json.Str(value,"artist")==song.Artist)mid=Json.Str(value,"mid");}catch{}
+   if(match!=null)try{var value=Json.Read(match);double matchedDuration=Json.Num(value,"duration");if(Json.Str(value,"title")==song.Title&&Json.Str(value,"artist")==song.Artist&&(song.Duration<=0||(matchedDuration>0&&Math.Abs(matchedDuration-song.Duration)<=6)))mid=Json.Str(value,"mid");}catch{}
+   string lyricName=song.CacheKey+".qq-lyrics.json",cached=refresh||mid.Length==0?null:store.Read(lyricName);
+   if(cached!=null)try{var lines=Parse(cached);if(lines.Count>0)return lines;}catch(Exception ex){store.Log("忽略损坏 QQ 歌词缓存："+ex.Message);}
+   double selectedDuration=0;
    if(String.IsNullOrEmpty(mid)){
     foreach(string keyword in new[]{song.Title+" "+song.Artist,song.Title}){
      var parameters=new Dictionary<string,object>{{"num_per_page",20},{"page_num",1},{"query",keyword},{"search_type",0}};
@@ -36,10 +37,10 @@ namespace CloudMusicFloat {
      var value=LyricHttp.ReadJson(await request("https://u.y.qq.com/cgi-bin/musicu.fcg",Json.Write(search)));var part=Json.Obj(value,"req_1");
      if(Json.Num(value,"code")!=0||part==null||Json.Num(part,"code")!=0)throw new LyricFailure("QQ 歌曲搜索暂不可用",true);
      var body=Json.Obj(Json.Obj(part,"data"),"body");var selected=PickMatch(song,Json.Arr(Json.Obj(body,"song"),"list"));
-     if(selected==null){store.Log("QQ 未匹配 "+song.Title+" / "+song.Artist+" / "+song.Duration.ToString(System.Globalization.CultureInfo.InvariantCulture)+" 秒；候选："+Json.Write(Json.Arr(Json.Obj(body,"song"),"list").Select(v=>{var item=v as Dictionary<string,object>;return new{title=Json.Str(item,"title"),singers=Json.Arr(item,"singer").Select(a=>Json.Str(a as Dictionary<string,object>,"name")).ToArray(),seconds=Json.Num(item,"interval")};}).ToArray()));continue;}mid=Json.Str(selected,"mid");if(mid.Length>0)break;
+     if(selected==null){store.Log("QQ 未匹配 "+song.Title+" / "+song.Artist+" / "+song.Duration.ToString(System.Globalization.CultureInfo.InvariantCulture)+" 秒；候选："+Json.Write(Json.Arr(Json.Obj(body,"song"),"list").Select(v=>{var item=v as Dictionary<string,object>;return new{title=Json.Str(item,"title"),singers=Json.Arr(item,"singer").Select(a=>Json.Str(a as Dictionary<string,object>,"name")).ToArray(),seconds=Json.Num(item,"interval")};}).ToArray()));continue;}mid=Json.Str(selected,"mid");selectedDuration=Json.Num(selected,"interval");if(mid.Length>0)break;
     }
-    if(String.IsNullOrEmpty(mid))throw new LyricFailure("未匹配到这首 QQ 歌曲",false);
-    store.Write(matchName,Json.Write(new Dictionary<string,object>{{"mid",mid},{"title",song.Title},{"artist",song.Artist}}));
+    if(String.IsNullOrEmpty(mid))throw new LyricFailure("未匹配到这首 QQ 歌曲",false,true);
+    store.Write(matchName,Json.Write(new Dictionary<string,object>{{"mid",mid},{"title",song.Title},{"artist",song.Artist},{"duration",selectedDuration}}));
    }
    string endpoint="https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg";
    string parametersText="songmid="+Uri.EscapeDataString(mid)+"&format=json&nobase64=1&g_tk=5381&loginUin=0&hostUin=0&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq&needNewCode=0";
